@@ -1,0 +1,59 @@
+# Запуск всего проекта: docker compose up --build
+# Портал: http://localhost:8080
+#
+# Секреты ниже — значения для локального запуска. В продакшене задайте свои
+# в файле .env рядом с этим файлом (см. .env.example).
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lms
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lms}
+      POSTGRES_DB: lms
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lms -d lms"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://lms:${POSTGRES_PASSWORD:-lms}@db:5432/lms?schema=public
+      PORT: 4000
+      CORS_ORIGIN: ${PUBLIC_URL:-http://localhost:8080}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-local-docker-access-secret-change-me}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-local-docker-refresh-secret-change-me}
+      FILE_URL_SECRET: ${FILE_URL_SECRET:-local-docker-file-secret-change-me}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      UPLOAD_DIR: /app/uploads
+      SEMESTER_START: ${SEMESTER_START:-2026-09-01}
+      TZ: ${TZ:-Europe/Moscow}
+    volumes:
+      - uploads:/app/uploads
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_APP_NAME: ${APP_NAME:-Аудитория}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
+volumes:
+  pgdata:
+  uploads:

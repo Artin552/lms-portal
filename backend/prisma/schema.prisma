@@ -1,0 +1,303 @@
+// Схема БД учебного портала.
+// Миграции: prisma/migrations, применяются командой `npx prisma migrate deploy`.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  TEACHER
+  ADMIN
+}
+
+enum LessonType {
+  LECTURE
+  PRACTICE
+  LAB
+}
+
+/// К каким неделям относится пара
+enum WeekParity {
+  ALL
+  ODD
+  EVEN
+}
+
+enum SubmissionStatus {
+  SUBMITTED // сдано, ждёт проверки
+  GRADED // проверено, выставлена оценка
+  RETURNED // возвращено на доработку
+}
+
+enum ChatType {
+  DIRECT
+  GROUP
+  SUBJECT
+}
+
+enum NotificationType {
+  NEW_ASSIGNMENT
+  DEADLINE_SOON
+  GRADED
+  RETURNED
+  NEW_MESSAGE
+}
+
+// ───────────── Пользователи и авторизация ─────────────
+
+model User {
+  id           Int      @id @default(autoincrement())
+  login        String   @unique
+  email        String   @unique
+  passwordHash String
+  role         Role
+  lastName     String
+  firstName    String
+  middleName   String?
+  avatarKey    String? // ключ в файловом хранилище
+  department   String? // кафедра (для преподавателя)
+  groupId      Int? // группа (для студента)
+  group        Group?   @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  refreshTokens     RefreshToken[]
+  teachings         Teaching[]
+  scheduleEntries   ScheduleEntry[]
+  assignments       Assignment[]
+  submissions       Submission[]
+  chatMemberships   ChatMember[]
+  messages          Message[]           @relation("MessageSender")
+  pinnedMessages    Message[]           @relation("MessagePinner")
+  notifications     Notification[]
+  uploadedFiles     Attachment[]
+
+  @@index([groupId])
+  @@index([role])
+}
+
+/// Refresh-токены храним только в виде SHA-256 хеша; при обновлении токен ротируется.
+model RefreshToken {
+  id        Int       @id @default(autoincrement())
+  tokenHash String    @unique
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// ───────────── Учебная структура ─────────────
+
+model Group {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  course    Int      @default(1)
+  createdAt DateTime @default(now())
+
+  students        User[]
+  teachings       Teaching[]
+  scheduleEntries ScheduleEntry[]
+  assignments     AssignmentGroup[]
+  chats           Chat[]
+}
+
+model Subject {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  shortName String?
+  createdAt DateTime @default(now())
+
+  teachings       Teaching[]
+  scheduleEntries ScheduleEntry[]
+  assignments     Assignment[]
+  chats           Chat[]
+}
+
+/// Назначение преподавателя: кто ведёт какой предмет у какой группы.
+/// Определяет права на создание заданий и состав чата по предмету.
+model Teaching {
+  id        Int     @id @default(autoincrement())
+  teacherId Int
+  teacher   User    @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  subjectId Int
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  groupId   Int
+  group     Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, subjectId, groupId])
+  @@index([groupId])
+}
+
+model ScheduleEntry {
+  id         Int        @id @default(autoincrement())
+  groupId    Int
+  group      Group      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  subjectId  Int
+  subject    Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacherId  Int
+  teacher    User       @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  dayOfWeek  Int // 1 = понедельник … 6 = суббота
+  pairNumber Int
+  startTime  String // "08:30"
+  endTime    String // "10:00"
+  type       LessonType
+  room       String
+  weekParity WeekParity @default(ALL)
+
+  @@index([groupId, dayOfWeek])
+  @@index([teacherId, dayOfWeek])
+}
+
+// ───────────── Задания и сдачи ─────────────
+
+model Assignment {
+  id          Int      @id @default(autoincrement())
+  subjectId   Int
+  subject     Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacherId   Int
+  teacher     User     @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  title       String
+  description String   @default("")
+  deadline    DateTime
+  maxScore    Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  groups      AssignmentGroup[]
+  files       Attachment[]
+  submissions Submission[]
+
+  @@index([teacherId])
+  @@index([deadline])
+}
+
+model AssignmentGroup {
+  assignmentId Int
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  groupId      Int
+  group        Group      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([assignmentId, groupId])
+  @@index([groupId])
+}
+
+/// Одна сдача на пару (задание, студент); пересдача обновляет запись.
+model Submission {
+  id             Int              @id @default(autoincrement())
+  assignmentId   Int
+  assignment     Assignment       @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  studentId      Int
+  student        User             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  text           String           @default("")
+  status         SubmissionStatus @default(SUBMITTED)
+  score          Int?
+  teacherComment String?
+  attempt        Int              @default(1)
+  submittedAt    DateTime         @default(now())
+  gradedAt       DateTime?
+
+  files Attachment[]
+
+  @@unique([assignmentId, studentId])
+  @@index([studentId])
+}
+
+// ───────────── Файлы ─────────────
+
+/// Вложение принадлежит ровно одному из: заданию, сдаче, сообщению.
+model Attachment {
+  id           Int         @id @default(autoincrement())
+  storageKey   String      @unique
+  fileName     String
+  mimeType     String
+  size         Int
+  uploadedById Int
+  uploadedBy   User        @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  assignmentId Int?
+  assignment   Assignment? @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  submissionId Int?
+  submission   Submission? @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  messageId    Int?
+  message      Message?    @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  createdAt    DateTime    @default(now())
+
+  @@index([assignmentId])
+  @@index([submissionId])
+  @@index([messageId])
+}
+
+// ───────────── Чаты ─────────────
+
+model Chat {
+  id        Int      @id @default(autoincrement())
+  type      ChatType
+  /// Уникальный ключ: "group:<groupId>", "subject:<subjectId>:<groupId>", "direct:<minUserId>:<maxUserId>"
+  key       String   @unique
+  title     String?
+  groupId   Int?
+  group     Group?   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  subjectId Int?
+  subject   Subject? @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  members  ChatMember[]
+  messages Message[]
+}
+
+model ChatMember {
+  chatId     Int
+  chat       Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  userId     Int
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadAt DateTime? // всё, что создано не позже, считается прочитанным
+  joinedAt   DateTime  @default(now())
+
+  @@id([chatId, userId])
+  @@index([userId])
+}
+
+model Message {
+  id          Int       @id @default(autoincrement())
+  chatId      Int
+  chat        Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  senderId    Int
+  sender      User      @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  text        String    @default("")
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime?
+  pinnedAt    DateTime?
+  pinnedById  Int?
+  pinnedBy    User?     @relation("MessagePinner", fields: [pinnedById], references: [id], onDelete: SetNull)
+
+  attachments Attachment[]
+
+  @@index([chatId, id])
+}
+
+// ───────────── Уведомления ─────────────
+
+model Notification {
+  id        Int              @id @default(autoincrement())
+  userId    Int
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String           @default("")
+  link      String?
+  /// Для идемпотентности (напоминание о дедлайне, схлопывание сообщений одного чата)
+  dedupeKey String?          @unique
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, readAt])
+}
