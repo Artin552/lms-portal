@@ -19,6 +19,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { api } from '../api/client';
 import type { Role } from '../api/types';
 import { useAuth, useMe } from '../auth/AuthContext';
+import { BrandMark } from '../components/BrandMark';
 import { Avatar, IconButton } from '../components/ui';
 import { APP_NAME } from '../config';
 import { useTheme } from '../theme/ThemeContext';
@@ -46,11 +47,11 @@ const NAV: NavItem[] = [
 export function Logo({ className }: { className?: string }) {
   return (
     <span className={clsx('flex items-center gap-2.5', className)}>
-      <svg viewBox="0 0 32 32" className="h-8 w-8 shrink-0" aria-hidden>
-        <rect width="32" height="32" rx="8" fill="rgb(var(--accent))" />
-        <path d="M8 23 16 8l8 15M11.5 17h9" fill="none" stroke="rgb(var(--on-accent))" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-      <span className="font-display text-[17px] font-semibold tracking-tight">{APP_NAME}</span>
+      <BrandMark size={36} className="shrink-0" />
+      <span className="flex flex-col leading-none">
+        <span className="font-display text-[17px] font-semibold tracking-tight">{APP_NAME}</span>
+        <span className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] opacity-60">учебный портал</span>
+      </span>
     </span>
   );
 }

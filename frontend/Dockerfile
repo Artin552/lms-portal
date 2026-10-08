@@ -3,7 +3,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-ARG VITE_APP_NAME=Аудитория
+ARG VITE_APP_NAME=ННГАСУ
 ENV VITE_APP_NAME=$VITE_APP_NAME
 RUN npm run build
 

@@ -47,7 +47,7 @@ services:
     build:
       context: ./frontend
       args:
-        VITE_APP_NAME: ${APP_NAME:-Аудитория}
+        VITE_APP_NAME: ${APP_NAME:-ННГАСУ}
     restart: unless-stopped
     depends_on:
       - backend

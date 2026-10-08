@@ -5,6 +5,7 @@ import { errorMessage } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { Button, ErrorBox, Field, Input } from '../components/ui';
 import { APP_NAME } from '../config';
+import { PyramidOutline } from '../components/BrandMark';
 import { Logo } from '../layout/AppLayout';
 
 export function LoginPage() {
@@ -43,22 +44,16 @@ export function LoginPage() {
           </defs>
           <rect width="100%" height="100%" fill="url(#grid)" />
         </svg>
-        <svg viewBox="0 0 600 600" className="absolute -bottom-24 -right-24 h-[620px] w-[620px] text-accent" aria-hidden>
-          <g fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M80 520 300 100l220 420z" />
-            <path d="M190 310h220M135 415h330" opacity=".6" />
-            <circle cx="300" cy="100" r="10" />
-            <path d="M300 100v420" strokeDasharray="6 8" opacity=".5" />
-          </g>
-        </svg>
+        <PyramidOutline className="absolute -bottom-36 -right-40 h-[500px] w-[500px] text-accent opacity-60" />
         <div className="relative flex h-full flex-col justify-between p-12">
           <Logo />
           <div className="max-w-md">
             <p className="font-display text-4xl font-semibold leading-[1.1] text-white">
-              Расписание, задания и общение — в одной аудитории.
+              Расписание, задания и общение — в одном портале.
             </p>
             <p className="mt-5 text-side-ink/70">
-              Учебный портал для студентов и преподавателей: пары на неделю, сдача работ, оценки и чаты групп.
+              Нижегородский государственный архитектурно-строительный университет. Пары на неделю, сдача работ, оценки
+              и чаты групп — для студентов и преподавателей.
             </p>
           </div>
           <p className="text-xs text-side-ink/50">© {new Date().getFullYear()} {APP_NAME}</p>
