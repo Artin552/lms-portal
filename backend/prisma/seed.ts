@@ -209,7 +209,7 @@ async function main() {
         assignmentId: a1.id, studentId: st.id,
         text: 'Отчёт и код: https://git.example.edu/' + st.login + '/lab1',
         status: graded ? 'GRADED' : 'SUBMITTED',
-        score: graded ? [3, 3.5, 4, 4.5, 5][i % 5] : null,
+        score: graded ? [3.2, 3.7, 4.1, 4.6, 5][i % 5] : null,
         teacherComment: graded ? (i % 5 === 3 ? 'Отличная работа, хороший анализ.' : 'Принято.') : null,
         submittedAt: days(-6), gradedAt: graded ? days(-3) : null,
       },
@@ -256,7 +256,7 @@ async function main() {
   await prisma.notification.createMany({
     data: [
       { userId: istStudents[0].id, type: 'NEW_ASSIGNMENT', title: `Новое задание: ${a3.title}`, body: subj.math.name, link: `/assignments/${a3.id}`, createdAt: hours(-48) },
-      { userId: istStudents[0].id, type: 'GRADED', title: 'Оценка: 3', body: `${subj.prog.name} — ${a1.title}`, link: `/assignments/${a1.id}`, createdAt: days(-3), readAt: days(-3) },
+      { userId: istStudents[0].id, type: 'GRADED', title: 'Оценка: 3,2', body: `${subj.prog.name} — ${a1.title}`, link: `/assignments/${a1.id}`, createdAt: days(-3), readAt: days(-3) },
       { userId: istStudents[0].id, type: 'RETURNED', title: 'Работа возвращена на доработку', body: `${subj.eng.name} — ${a4.title}`, link: `/assignments/${a4.id}`, createdAt: hours(-5) },
     ],
   });

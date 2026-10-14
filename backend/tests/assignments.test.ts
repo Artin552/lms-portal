@@ -112,36 +112,37 @@ describe('Задания', () => {
       expect(subs.body.rows).toHaveLength(1);
       const submissionId = subs.body.rows[0].submission.id;
 
-      // Шкала 2–5 с шагом 0,5: всё остальное отклоняется
-      for (const bad of [1.5, 5.5, 4.3, 'отлично']) {
+      // Шкала 2–5 с шагом 0,1: всё остальное отклоняется
+      for (const bad of [1.9, 5.1, 4.35, 'отлично', '']) {
         const res = await request(app).patch(`/api/submissions/${submissionId}/grade`).set(auth(teacher)).send({ score: bad });
         expect(res.status, `score=${bad}`).toBe(400);
       }
 
+      // Запятая тоже принимается, значение сохраняется без хвостов плавающей точки
       const graded = await request(app)
         .patch(`/api/submissions/${submissionId}/grade`)
         .set(auth(teacher))
-        .send({ score: 4.5, comment: 'Хорошо' });
+        .send({ score: '4,3', comment: 'Хорошо' });
       expect(graded.status).toBe(200);
-      expect(graded.body).toMatchObject({ status: 'GRADED', score: 4.5, teacherComment: 'Хорошо' });
+      expect(graded.body).toMatchObject({ status: 'GRADED', score: 4.3, teacherComment: 'Хорошо' });
 
       const note = await prisma.notification.findFirst({ where: { userId: fx.studentA.id, type: 'GRADED' } });
-      expect(note?.title).toBe('Оценка: 4,5');
+      expect(note?.title).toBe('Оценка: 4,3');
 
       // Проверенную работу пересдать нельзя
       const again = await request(app).post(`/api/assignments/${a.id}/submission`).set(auth(studentA)).field('text', 'v3');
       expect(again.status).toBe(403);
 
       const my = await request(app).get('/api/grades/my').set(auth(studentA));
-      expect(my.body.subjects).toEqual([expect.objectContaining({ count: 1, average: 4.5 })]);
+      expect(my.body.subjects).toEqual([expect.objectContaining({ count: 1, average: 4.3 })]);
     });
 
     it('ведомость считает среднюю оценку студента', async () => {
       const a1 = await createAssignment({ title: 'ЛР1' });
       const a2 = await createAssignment({ title: 'ЛР2' });
       for (const [a, score] of [
-        [a1, 5],
-        [a2, 3.5],
+        [a1, 4.7],
+        [a2, 3.8],
       ] as const) {
         await request(app).post(`/api/assignments/${a.id}/submission`).set(auth(studentA)).field('text', 'ok');
         const sub = await prisma.submission.findFirstOrThrow({ where: { assignmentId: a.id } });

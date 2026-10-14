@@ -7,10 +7,10 @@ import { api, errorMessage } from '../api/client';
 import type { Assignment, StudentStatus, Submission, SubmissionRow } from '../api/types';
 import { useMe } from '../auth/AuthContext';
 import { FileList, FilePicker } from '../components/files';
-import { Avatar, Badge, Button, Card, CardHeader, EmptyState, ErrorBox, Field, Loading, Tabs, Textarea } from '../components/ui';
+import { Avatar, Badge, Button, Card, CardHeader, EmptyState, ErrorBox, Field, Input, Loading, Tabs, Textarea } from '../components/ui';
 import { fmtDateTime, fmtDeadline, hoursLeft, STATUS, STATUS_TONE } from '../utils/format';
 import { GradePill } from '../components/GradePill';
-import { formatGrade, GRADE_OPTIONS } from '../utils/grades';
+import { formatGrade, parseGrade, QUICK_GRADES } from '../utils/grades';
 
 export function AssignmentDetailPage() {
   const { id } = useParams();
@@ -290,8 +290,10 @@ function ReviewPanel({ assignmentId }: { assignmentId: number }) {
 
 function ReviewForm({ submission, assignmentId, onDone }: { submission: Submission; assignmentId: number; onDone: () => void }) {
   const qc = useQueryClient();
-  const [score, setScore] = useState<number | null>(submission.score);
+  const [input, setInput] = useState(submission.score !== null ? formatGrade(submission.score) : '');
   const [comment, setComment] = useState(submission.teacherComment ?? '');
+  const parsed = parseGrade(input);
+  const score = 'value' in parsed ? parsed.value : null;
 
   const onSuccess = () => {
     qc.invalidateQueries({ queryKey: ['submissions', assignmentId] });
@@ -320,29 +322,38 @@ function ReviewForm({ submission, assignmentId, onDone }: { submission: Submissi
       <FileList files={submission.files} />
       <div className="space-y-3">
         <div>
-          <span className="label" id={`grade-${submission.id}`}>
-            Оценка
-          </span>
-          <div role="radiogroup" aria-labelledby={`grade-${submission.id}`} className="flex flex-wrap gap-1.5">
-            {GRADE_OPTIONS.map((g) => {
-              const active = score === g;
-              return (
-                <button
-                  key={g}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  onClick={() => setScore(g)}
-                  className={clsx(
-                    'h-10 min-w-[3rem] rounded-md border px-2 font-display text-sm font-semibold tabular transition-colors',
-                    active ? 'border-accent bg-accent text-on-accent' : 'border-line bg-surface hover:border-accent/60 hover:bg-surface-2',
-                  )}
-                >
-                  {formatGrade(g)}
-                </button>
-              );
-            })}
+          <label className="label" htmlFor={`grade-${submission.id}`}>
+            Оценка (от 2 до 5, шаг 0,1)
+          </label>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Input
+              id={`grade-${submission.id}`}
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="4,3"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && score !== null && grade.mutate()}
+              aria-invalid={!!input && score === null}
+              className={clsx('h-10 w-24 text-center font-display text-base font-semibold tabular', input && score === null && 'border-danger focus:border-danger')}
+            />
+            <span className="mx-1 text-xs text-muted">или</span>
+            {QUICK_GRADES.map((g) => (
+              <button
+                key={g}
+                type="button"
+                onClick={() => setInput(formatGrade(g))}
+                aria-pressed={score === g}
+                className={clsx(
+                  'h-10 min-w-[2.75rem] rounded-md border px-2 font-display text-sm font-semibold tabular transition-colors',
+                  score === g ? 'border-accent bg-accent text-on-accent' : 'border-line bg-surface hover:border-accent/60 hover:bg-surface-2',
+                )}
+              >
+                {g}
+              </button>
+            ))}
           </div>
+          {input && 'error' in parsed && <p className="mt-1 text-xs text-danger">{parsed.error}</p>}
         </div>
         <Field label="Комментарий">
           <Textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Что хорошо, что исправить" className="min-h-[42px]" />
@@ -351,7 +362,7 @@ function ReviewForm({ submission, assignmentId, onDone }: { submission: Submissi
       {err && <ErrorBox message={errorMessage(err)} />}
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => grade.mutate()} disabled={score === null} loading={grade.isPending} icon={<Check className="h-4 w-4" />}>
-          {score === null ? 'Выберите оценку' : `Поставить ${formatGrade(score)}`}
+          {score === null ? 'Введите оценку' : `Поставить ${formatGrade(score)}`}
         </Button>
         <Button
           variant="secondary"

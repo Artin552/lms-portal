@@ -1,13 +1,23 @@
-/** Шкала оценок: от 2 до 5 с шагом 0,5. Шаг меняется здесь (и в backend/src/utils/grades.ts). */
+/** Шкала оценок: от 2 до 5 с шагом 0,1. Шаг меняется здесь (и в backend/src/utils/grades.ts). */
 export const GRADE_MIN = 2;
 export const GRADE_MAX = 5;
-export const GRADE_STEP = 0.5;
+export const GRADE_STEP = 0.1;
 
-/** Все допустимые оценки: 2, 2.5, 3 … 5 */
-export const GRADE_OPTIONS = Array.from(
-  { length: Math.round((GRADE_MAX - GRADE_MIN) / GRADE_STEP) + 1 },
-  (_, i) => GRADE_MIN + i * GRADE_STEP,
-);
+/** Круглые оценки для быстрых кнопок */
+export const QUICK_GRADES = [2, 3, 4, 5];
+
+/** Разбор ввода «4,3» / «4.3». Возвращает число или текст ошибки. */
+export function parseGrade(input: string): { value: number } | { error: string } {
+  const s = input.trim().replace(',', '.');
+  if (!s) return { error: 'Введите оценку' };
+  const v = Number(s);
+  if (!Number.isFinite(v)) return { error: 'Оценка должна быть числом' };
+  if (v < GRADE_MIN || v > GRADE_MAX) return { error: `Оценка от ${GRADE_MIN} до ${GRADE_MAX}` };
+  if (Math.abs(v / GRADE_STEP - Math.round(v / GRADE_STEP)) > 1e-9) {
+    return { error: `Шаг оценки — ${formatGrade(GRADE_STEP)}` };
+  }
+  return { value: Number((Math.round(v / GRADE_STEP) * GRADE_STEP).toFixed(2)) };
+}
 
 /** «4,5», «5», «4,25» */
 export function formatGrade(v: number | null | undefined) {
