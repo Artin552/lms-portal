@@ -2,15 +2,16 @@ import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import clsx from 'clsx';
-import { ArrowRight, CalendarDays, ClipboardCheck, Coffee, Hourglass, MessagesSquare, Star } from 'lucide-react';
+import { CalendarDays, ClipboardCheck, Coffee, Hourglass, Star } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
-import type { ScheduleEntry, StudentStatus } from '../api/types';
+import type { Role, ScheduleEntry, StudentStatus } from '../api/types';
 import { useMe } from '../auth/AuthContext';
 import { LessonCard } from '../components/LessonCard';
+import { countLabel, TodayStrip, type TodayFact } from '../components/TodayStrip';
 import { Badge, Card, CardHeader, EmptyState, Loading } from '../components/ui';
-import { fmtDeadline, hoursLeft, plural, STATUS, STATUS_TONE } from '../utils/format';
+import { fmtDeadline, hoursLeft, STATUS, STATUS_TONE } from '../utils/format';
 import { currentAndNext } from '../utils/schedule';
 
 interface DashboardData {
@@ -41,19 +42,40 @@ function greeting(d: Date) {
   return 'Добрый вечер';
 }
 
-function Stat({ icon, label, value, to, tone }: { icon: JSX.Element; label: string; value: number | string; to: string; tone?: 'accent' }) {
-  return (
-    <Link to={to} className="card group flex items-center gap-4 p-4 transition-colors hover:border-accent/50">
-      <span className={clsx('flex h-11 w-11 items-center justify-center rounded-lg', tone === 'accent' ? 'bg-accent text-on-accent' : 'bg-surface-2 text-ink')}>
-        {icon}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block font-display text-2xl font-semibold tabular leading-none">{value}</span>
-        <span className="mt-1 block text-xs text-muted">{label}</span>
-      </span>
-      <ArrowRight className="h-4 w-4 text-muted transition-transform group-hover:translate-x-0.5" />
-    </Link>
-  );
+/** Короткие факты под линейкой дня — словами, а не крупными цифрами */
+function buildFacts(data: DashboardData, role: Role): TodayFact[] {
+  const facts: TodayFact[] = [];
+  if (role === 'STUDENT') {
+    const list = data.deadlines ?? [];
+    const first = list[0];
+    facts.push({
+      label: 'Дедлайны',
+      to: '/assignments?status=pending',
+      hot: !!first && hoursLeft(first.deadline) < 24,
+      value: first ? `${countLabel(list.length, ['задание', 'задания', 'заданий'])}, ближайшее ${fmtDeadline(first.deadline)}` : 'всё сдано',
+    });
+    const grade = data.recentGrades?.[0];
+    facts.push({
+      label: 'Последняя оценка',
+      to: '/grades',
+      value: grade ? `${grade.score}/${grade.maxScore} — ${grade.title}` : 'пока нет',
+    });
+  } else {
+    const total = data.toCheckTotal ?? 0;
+    facts.push({
+      label: 'На проверке',
+      to: '/assignments',
+      hot: total > 0,
+      value: total ? `${countLabel(total, ['работа', 'работы', 'работ'])}, больше всего — «${data.toCheck?.[0]?.title}»` : 'всё проверено',
+    });
+  }
+  facts.push({
+    label: 'Сообщения',
+    to: '/chats',
+    hot: data.unreadMessages > 0,
+    value: data.unreadMessages ? countLabel(data.unreadMessages, ['новое', 'новых', 'новых']) : 'нет новых',
+  });
+  return facts;
 }
 
 export function DashboardPage() {
@@ -82,32 +104,7 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Stat icon={<CalendarDays className="h-5 w-5" />} label={plural(data.lessons.length, ['пара сегодня', 'пары сегодня', 'пар сегодня'])} value={data.lessons.length} to="/schedule" />
-        {me.role === 'STUDENT' ? (
-          <Stat
-            icon={<Hourglass className="h-5 w-5" />}
-            label="ближайших дедлайнов"
-            value={data.deadlines?.length ?? 0}
-            to="/assignments?status=pending"
-          />
-        ) : (
-          <Stat
-            icon={<ClipboardCheck className="h-5 w-5" />}
-            label={plural(data.toCheckTotal ?? 0, ['работа ждёт проверки', 'работы ждут проверки', 'работ ждут проверки'])}
-            value={data.toCheckTotal ?? 0}
-            to="/assignments"
-            tone={(data.toCheckTotal ?? 0) > 0 ? 'accent' : undefined}
-          />
-        )}
-        <Stat
-          icon={<MessagesSquare className="h-5 w-5" />}
-          label={plural(data.unreadMessages, ['непрочитанное сообщение', 'непрочитанных сообщения', 'непрочитанных сообщений'])}
-          value={data.unreadMessages}
-          to="/chats"
-          tone={data.unreadMessages > 0 && me.role === 'STUDENT' ? 'accent' : undefined}
-        />
-      </div>
+      <TodayStrip lessons={data.lessons} now={now} facts={buildFacts(data, me.role)} />
 
       <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
         <Card>
