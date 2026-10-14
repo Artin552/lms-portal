@@ -155,7 +155,7 @@ async function main() {
     data: {
       subjectId: subj.prog.id, teacherId: t1.id, title: 'Лабораторная №1. Алгоритмы сортировки',
       description: 'Реализуйте сортировку вставками и быструю сортировку на Python.\nСравните время работы на массивах из 10³, 10⁴ и 10⁵ элементов, постройте график.\n\nОтчёт — PDF или ссылка на репозиторий.',
-      deadline: days(-5), maxScore: 10,
+      deadline: days(-5),
       groups: { create: [{ groupId: ist.id }, { groupId: pgs.id }] },
     },
   });
@@ -163,7 +163,7 @@ async function main() {
     data: {
       subjectId: subj.prog.id, teacherId: t1.id, title: 'Лабораторная №2. Работа с файлами',
       description: 'Напишите программу, которая читает CSV с оценками студентов и выводит средний балл по каждому предмету.',
-      deadline: hours(20), maxScore: 10,
+      deadline: hours(20),
       groups: { create: [{ groupId: ist.id }, { groupId: pgs.id }] },
     },
   });
@@ -171,7 +171,7 @@ async function main() {
     data: {
       subjectId: subj.math.id, teacherId: t1.id, title: 'ИДЗ: пределы и производные',
       description: 'Вариант = номер в списке группы. Решения оформить от руки, отсканировать в один PDF.',
-      deadline: days(6), maxScore: 20,
+      deadline: days(6),
       groups: { create: [{ groupId: ist.id }] },
     },
   });
@@ -179,7 +179,7 @@ async function main() {
     data: {
       subjectId: subj.eng.id, teacherId: t3.id, title: 'Essay: My future profession',
       description: 'Write an essay (200–250 words) about your future profession. Use at least 10 words from Unit 3.',
-      deadline: days(3), maxScore: 5,
+      deadline: days(3),
       groups: { create: [{ groupId: ist.id }, { groupId: pgs.id }] },
     },
   });
@@ -187,7 +187,7 @@ async function main() {
     data: {
       subjectId: subj.mech.id, teacherId: t2.id, title: 'РГР №1. Расчёт статически определимой балки',
       description: 'Построить эпюры Q и M для балки по своему варианту. Шаблон оформления — во вложении.',
-      deadline: days(10), maxScore: 30,
+      deadline: days(10),
       groups: { create: [{ groupId: pgs.id }] },
     },
   });
@@ -209,7 +209,7 @@ async function main() {
         assignmentId: a1.id, studentId: st.id,
         text: 'Отчёт и код: https://git.example.edu/' + st.login + '/lab1',
         status: graded ? 'GRADED' : 'SUBMITTED',
-        score: graded ? 6 + (i % 5) : null,
+        score: graded ? [3, 3.5, 4, 4.5, 5][i % 5] : null,
         teacherComment: graded ? (i % 5 === 3 ? 'Отличная работа, хороший анализ.' : 'Принято.') : null,
         submittedAt: days(-6), gradedAt: graded ? days(-3) : null,
       },
@@ -256,7 +256,7 @@ async function main() {
   await prisma.notification.createMany({
     data: [
       { userId: istStudents[0].id, type: 'NEW_ASSIGNMENT', title: `Новое задание: ${a3.title}`, body: subj.math.name, link: `/assignments/${a3.id}`, createdAt: hours(-48) },
-      { userId: istStudents[0].id, type: 'GRADED', title: 'Оценка: 6/10', body: `${subj.prog.name} — ${a1.title}`, link: `/assignments/${a1.id}`, createdAt: days(-3), readAt: days(-3) },
+      { userId: istStudents[0].id, type: 'GRADED', title: 'Оценка: 3', body: `${subj.prog.name} — ${a1.title}`, link: `/assignments/${a1.id}`, createdAt: days(-3), readAt: days(-3) },
       { userId: istStudents[0].id, type: 'RETURNED', title: 'Работа возвращена на доработку', body: `${subj.eng.name} — ${a4.title}`, link: `/assignments/${a4.id}`, createdAt: hours(-5) },
     ],
   });

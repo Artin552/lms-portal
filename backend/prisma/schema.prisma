@@ -169,7 +169,6 @@ model Assignment {
   title       String
   description String   @default("")
   deadline    DateTime
-  maxScore    Int
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -200,7 +199,8 @@ model Submission {
   student        User             @relation(fields: [studentId], references: [id], onDelete: Cascade)
   text           String           @default("")
   status         SubmissionStatus @default(SUBMITTED)
-  score          Int?
+  /// Оценка по шкале 2–5 с шагом 0,5 (null — ещё не выставлена)
+  score          Float?
   teacherComment String?
   attempt        Int              @default(1)
   submittedAt    DateTime         @default(now())

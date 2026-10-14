@@ -15,7 +15,6 @@ interface FormState {
   title: string;
   description: string;
   deadline: string; // значение datetime-local
-  maxScore: string;
 }
 
 const defaultDeadline = () => {
@@ -47,7 +46,6 @@ export function AssignmentFormPage() {
     title: '',
     description: '',
     deadline: defaultDeadline(),
-    maxScore: '10',
   });
   const [files, setFiles] = useState<File[]>([]);
   const [removeIds, setRemoveIds] = useState<number[]>([]);
@@ -61,7 +59,6 @@ export function AssignmentFormPage() {
       title: a.title,
       description: a.description,
       deadline: format(new Date(a.deadline), "yyyy-MM-dd'T'HH:mm"),
-      maxScore: String(a.maxScore),
     });
   }, [existing.data]);
 
@@ -88,7 +85,6 @@ export function AssignmentFormPage() {
       fd.append('title', form.title);
       fd.append('description', form.description);
       fd.append('deadline', new Date(form.deadline).toISOString());
-      fd.append('maxScore', form.maxScore);
       if (removeIds.length) fd.append('removeFileIds', removeIds.join(','));
       files.forEach((f) => fd.append('files', f));
       const res = isEdit ? await api.put<Assignment>(`/assignments/${id}`, fd) : await api.post<Assignment>('/assignments', fd);
@@ -177,9 +173,6 @@ export function AssignmentFormPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Дедлайн">
                 <Input type="datetime-local" value={form.deadline} onChange={(e) => set('deadline', e.target.value)} required />
-              </Field>
-              <Field label="Максимальный балл">
-                <Input type="number" min={1} max={1000} value={form.maxScore} onChange={(e) => set('maxScore', e.target.value)} required />
               </Field>
             </div>
 

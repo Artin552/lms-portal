@@ -8,7 +8,7 @@ import type { Assignment, StudentStatus } from '../api/types';
 import { useMe } from '../auth/AuthContext';
 import { Badge, Button, EmptyState, Loading, PageHeader, Select, Tabs } from '../components/ui';
 import { fmtDeadline, hoursLeft, STATUS, STATUS_TONE } from '../utils/format';
-import { ScorePill } from './DashboardPage';
+import { GradePill } from '../components/GradePill';
 
 type Filter = 'all' | StudentStatus;
 
@@ -132,13 +132,13 @@ export function AssignmentsPage() {
                     )}
                   >
                     <CalendarClock className="h-3.5 w-3.5" /> до {fmtDeadline(a.deadline)}
-                    <span className="text-muted">· макс. {a.maxScore} б.</span>
+                    
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
                   {isStudent && a.status && (
                     <>
-                      {a.status === 'graded' && <ScorePill score={a.score ?? null} max={a.maxScore} />}
+                      {a.status === 'graded' && <GradePill score={a.score} />}
                       <Badge tone={STATUS_TONE[a.status]}>{STATUS[a.status]}</Badge>
                     </>
                   )}

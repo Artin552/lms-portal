@@ -67,7 +67,6 @@ export interface Assignment {
   title: string;
   description: string;
   deadline: string;
-  maxScore: number;
   createdAt: string;
   subject: Ref;
   teacher: { id: number; shortName: string; fullName: string };

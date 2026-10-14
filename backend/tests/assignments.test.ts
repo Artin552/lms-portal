@@ -33,7 +33,6 @@ describe('Задания', () => {
       title: 'Лабораторная №1',
       description: 'Сделать всё',
       deadline: inDays(3),
-      maxScore: '10',
       ...overrides,
     };
     const res = await request(app).post('/api/assignments').set(auth(teacher)).field(fields);
@@ -56,8 +55,7 @@ describe('Задания', () => {
         .field('subjectId', String(fx.subject.id))
         .field('groupIds', `${fx.groupA.id},${fx.groupB.id}`)
         .field('title', 'X')
-        .field('deadline', inDays(1))
-        .field('maxScore', '5');
+        .field('deadline', inDays(1));
       expect(res.status).toBe(403);
     });
 
@@ -65,7 +63,7 @@ describe('Задания', () => {
       const res = await request(app)
         .post('/api/assignments')
         .set(auth(studentA))
-        .send({ subjectId: fx.subject.id, groupIds: [fx.groupA.id], title: 'X', deadline: inDays(1), maxScore: 5 });
+        .send({ subjectId: fx.subject.id, groupIds: [fx.groupA.id], title: 'X', deadline: inDays(1) });
       expect(res.status).toBe(403);
     });
 
@@ -73,11 +71,9 @@ describe('Задания', () => {
       const res = await request(app)
         .post('/api/assignments')
         .set(auth(teacher))
-        .send({ subjectId: fx.subject.id, groupIds: [fx.groupA.id], title: '', deadline: 'завтра', maxScore: 0 });
+        .send({ subjectId: fx.subject.id, groupIds: [fx.groupA.id], title: '', deadline: 'завтра' });
       expect(res.status).toBe(400);
-      expect(res.body.details.map((d: { path: string }) => d.path)).toEqual(
-        expect.arrayContaining(['title', 'deadline', 'maxScore']),
-      );
+      expect(res.body.details.map((d: { path: string }) => d.path)).toEqual(expect.arrayContaining(['title', 'deadline']));
     });
   });
 
@@ -116,25 +112,47 @@ describe('Задания', () => {
       expect(subs.body.rows).toHaveLength(1);
       const submissionId = subs.body.rows[0].submission.id;
 
-      const tooMuch = await request(app).patch(`/api/submissions/${submissionId}/grade`).set(auth(teacher)).send({ score: 11 });
-      expect(tooMuch.status).toBe(400);
+      // Шкала 2–5 с шагом 0,5: всё остальное отклоняется
+      for (const bad of [1.5, 5.5, 4.3, 'отлично']) {
+        const res = await request(app).patch(`/api/submissions/${submissionId}/grade`).set(auth(teacher)).send({ score: bad });
+        expect(res.status, `score=${bad}`).toBe(400);
+      }
 
       const graded = await request(app)
         .patch(`/api/submissions/${submissionId}/grade`)
         .set(auth(teacher))
-        .send({ score: 9, comment: 'Хорошо' });
+        .send({ score: 4.5, comment: 'Хорошо' });
       expect(graded.status).toBe(200);
-      expect(graded.body).toMatchObject({ status: 'GRADED', score: 9, teacherComment: 'Хорошо' });
+      expect(graded.body).toMatchObject({ status: 'GRADED', score: 4.5, teacherComment: 'Хорошо' });
 
       const note = await prisma.notification.findFirst({ where: { userId: fx.studentA.id, type: 'GRADED' } });
-      expect(note?.title).toContain('9/10');
+      expect(note?.title).toBe('Оценка: 4,5');
 
       // Проверенную работу пересдать нельзя
       const again = await request(app).post(`/api/assignments/${a.id}/submission`).set(auth(studentA)).field('text', 'v3');
       expect(again.status).toBe(403);
 
       const my = await request(app).get('/api/grades/my').set(auth(studentA));
-      expect(my.body.subjects).toEqual([expect.objectContaining({ earned: 9, max: 10, percent: 90 })]);
+      expect(my.body.subjects).toEqual([expect.objectContaining({ count: 1, average: 4.5 })]);
+    });
+
+    it('ведомость считает среднюю оценку студента', async () => {
+      const a1 = await createAssignment({ title: 'ЛР1' });
+      const a2 = await createAssignment({ title: 'ЛР2' });
+      for (const [a, score] of [
+        [a1, 5],
+        [a2, 3.5],
+      ] as const) {
+        await request(app).post(`/api/assignments/${a.id}/submission`).set(auth(studentA)).field('text', 'ok');
+        const sub = await prisma.submission.findFirstOrThrow({ where: { assignmentId: a.id } });
+        await request(app).patch(`/api/submissions/${sub.id}/grade`).set(auth(teacher)).send({ score }).expect(200);
+      }
+      const res = await request(app)
+        .get('/api/grades/gradebook')
+        .query({ groupId: fx.groupA.id, subjectId: fx.subject.id })
+        .set(auth(teacher));
+      expect(res.status).toBe(200);
+      expect(res.body.rows[0]).toMatchObject({ average: 4.25, gradedCount: 2 });
     });
 
     it('пустую сдачу не принимает', async () => {
@@ -177,9 +195,9 @@ describe('Задания', () => {
       const sub = await prisma.submission.findFirstOrThrow({ where: { assignmentId: a.id } });
       expect((await request(app).get(`/api/assignments/${a.id}/submissions`).set(auth(otherTeacher))).status).toBe(403);
       expect(
-        (await request(app).patch(`/api/submissions/${sub.id}/grade`).set(auth(otherTeacher)).send({ score: 1 })).status,
+        (await request(app).patch(`/api/submissions/${sub.id}/grade`).set(auth(otherTeacher)).send({ score: 3 })).status,
       ).toBe(403);
-      expect((await request(app).patch(`/api/submissions/${sub.id}/grade`).set(auth(studentA)).send({ score: 10 })).status).toBe(403);
+      expect((await request(app).patch(`/api/submissions/${sub.id}/grade`).set(auth(studentA)).send({ score: 5 })).status).toBe(403);
     });
   });
 

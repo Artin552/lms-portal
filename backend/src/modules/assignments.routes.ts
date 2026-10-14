@@ -94,7 +94,6 @@ const assignmentBody = z.object({
   title: z.string().trim().min(1, 'Введите название').max(200),
   description: z.string().max(20000).default(''),
   deadline: z.coerce.date({ invalid_type_error: 'Некорректный дедлайн' }),
-  maxScore: z.coerce.number().int().min(1).max(1000),
 });
 
 assignmentsRouter.post('/', requireRole('TEACHER'), upload.array('files'), async (req, res) => {
@@ -110,7 +109,6 @@ assignmentsRouter.post('/', requireRole('TEACHER'), upload.array('files'), async
       title: data.title,
       description: data.description,
       deadline: data.deadline,
-      maxScore: data.maxScore,
       groups: { create: data.groupIds.map((groupId) => ({ groupId })) },
     },
   });
@@ -168,7 +166,6 @@ assignmentsRouter.put('/:id', requireRole('TEACHER', 'ADMIN'), upload.array('fil
       title: data.title,
       description: data.description,
       deadline: data.deadline,
-      maxScore: data.maxScore,
       ...(data.groupIds && {
         groups: { deleteMany: {}, create: data.groupIds.map((groupId) => ({ groupId })) },
       }),

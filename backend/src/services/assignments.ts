@@ -45,7 +45,6 @@ export function serializeAssignment(a: FullAssignment) {
     title: a.title,
     description: a.description,
     deadline: a.deadline,
-    maxScore: a.maxScore,
     createdAt: a.createdAt,
     subject: { id: a.subject.id, name: a.subject.name },
     teacher: { id: a.teacher.id, shortName: shortName(a.teacher), fullName: publicUser(a.teacher).fullName },

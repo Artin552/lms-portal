@@ -54,7 +54,6 @@ dashboardRouter.get('/', async (req, res) => {
         title: s.assignment.title,
         subject: s.assignment.subject.name,
         score: s.score,
-        maxScore: s.assignment.maxScore,
         gradedAt: s.gradedAt,
       })),
     });

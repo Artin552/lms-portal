@@ -4,7 +4,8 @@ import { currentUser, requireAuth, requireRole } from '../middleware/auth';
 import { prisma } from '../prisma';
 import { assertCanManage, serializeSubmission } from '../services/assignments';
 import { notifyUsers } from '../services/notifications';
-import { badRequest, notFound } from '../utils/errors';
+import { notFound } from '../utils/errors';
+import { formatGrade, gradeSchema } from '../utils/grades';
 import { idParam } from '../utils/zod';
 
 export const submissionsRouter = Router();
@@ -17,7 +18,7 @@ async function loadForReview(id: number) {
 }
 
 const gradeBody = z.object({
-  score: z.coerce.number().int().min(0),
+  score: gradeSchema,
   comment: z.string().max(5000).optional(),
 });
 
@@ -26,7 +27,6 @@ submissionsRouter.patch('/:id/grade', async (req, res) => {
   const sub = await loadForReview(idParam.parse(req.params.id));
   assertCanManage(me, sub.assignment);
   const { score, comment } = gradeBody.parse(req.body);
-  if (score > sub.assignment.maxScore) throw badRequest(`Балл не может быть больше ${sub.assignment.maxScore}`);
 
   const updated = await prisma.submission.update({
     where: { id: sub.id },
@@ -35,7 +35,7 @@ submissionsRouter.patch('/:id/grade', async (req, res) => {
   });
   await notifyUsers([sub.studentId], {
     type: 'GRADED',
-    title: `Оценка: ${score}/${sub.assignment.maxScore}`,
+    title: `Оценка: ${formatGrade(score)}`,
     body: `${sub.assignment.subject.name} — ${sub.assignment.title}`,
     link: `/assignments/${sub.assignmentId}`,
   });

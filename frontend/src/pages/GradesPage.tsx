@@ -7,8 +7,9 @@ import { api } from '../api/client';
 import type { Profile, PublicUser, Ref, StudentStatus } from '../api/types';
 import { useMe } from '../auth/AuthContext';
 import { Card, CardHeader, EmptyState, Loading, PageHeader, Select } from '../components/ui';
-import { fmtDate, STATUS } from '../utils/format';
-import { ScorePill } from './DashboardPage';
+import { fmtDate, plural, STATUS } from '../utils/format';
+import { GradePill } from '../components/GradePill';
+import { formatGrade, gradeFraction, gradeTone } from '../utils/grades';
 
 export function GradesPage() {
   const me = useMe();
@@ -24,12 +25,14 @@ interface MyGradesData {
     title: string;
     subject: Ref;
     score: number;
-    maxScore: number;
     comment: string | null;
     gradedAt: string;
   }[];
-  subjects: { subject: Ref; earned: number; max: number; count: number; percent: number }[];
+  subjects: { subject: Ref; count: number; average: number | null }[];
+  average: number | null;
 }
+
+const BAR: Record<ReturnType<typeof gradeTone>, string> = { ok: 'bg-ok', info: 'bg-info', warn: 'bg-warn', danger: 'bg-danger' };
 
 function MyGrades() {
   const { data, isLoading } = useQuery({
@@ -43,7 +46,18 @@ function MyGrades() {
 
   return (
     <div>
-      <PageHeader title="Мои оценки" subtitle="Баллы за проверенные работы" />
+      <PageHeader
+        title="Мои оценки"
+        subtitle={
+          data.average !== null ? (
+            <>
+              Средний балл по всем предметам — <b className="tabular text-ink">{formatGrade(data.average)}</b>
+            </>
+          ) : (
+            'Оценки за проверенные работы'
+          )
+        }
+      />
       {!data.grades.length ? (
         <div className="card">
           <EmptyState icon={<GraduationCap />} title="Оценок пока нет" text="Они появятся, когда преподаватель проверит ваши работы" />
@@ -62,20 +76,16 @@ function MyGrades() {
               >
                 <div className="truncate text-sm font-semibold">{s.subject.name}</div>
                 <div className="mt-3 flex items-end justify-between">
-                  <span className="font-display text-3xl font-semibold tabular leading-none">
-                    {s.percent}
-                    <span className="text-base text-muted">%</span>
-                  </span>
+                  <span className="font-display text-3xl font-semibold tabular leading-none">{formatGrade(s.average)}</span>
                   <span className="text-xs text-muted tabular">
-                    {s.earned} из {s.max} · {s.count} раб.
+                    средний · {s.count} {plural(s.count, ['оценка', 'оценки', 'оценок'])}
                   </span>
                 </div>
-                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-2">
-                  <div
-                    className={clsx('h-full rounded-full', s.percent >= 85 ? 'bg-ok' : s.percent >= 60 ? 'bg-info' : 'bg-warn')}
-                    style={{ width: `${s.percent}%` }}
-                  />
-                </div>
+                {s.average !== null && (
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-2">
+                    <div className={clsx('h-full rounded-full', BAR[gradeTone(s.average)])} style={{ width: `${Math.max(4, gradeFraction(s.average) * 100)}%` }} />
+                  </div>
+                )}
               </button>
             ))}
           </div>
@@ -105,7 +115,7 @@ function MyGrades() {
                         {g.comment && ` · «${g.comment}»`}
                       </span>
                     </span>
-                    <ScorePill score={g.score} max={g.maxScore} />
+                    <GradePill score={g.score} />
                   </Link>
                 </li>
               ))}
@@ -120,14 +130,13 @@ function MyGrades() {
 // ───────────── Преподаватель / администратор ─────────────
 
 interface GradebookData {
-  assignments: { id: number; title: string; deadline: string; maxScore: number }[];
+  assignments: { id: number; title: string; deadline: string }[];
   rows: {
     student: PublicUser;
     cells: { assignmentId: number; submissionId: number | null; status: StudentStatus; score: number | null }[];
-    total: number;
-    percent: number;
+    average: number | null;
+    gradedCount: number;
   }[];
-  totalMax: number;
 }
 
 const CELL: Record<StudentStatus, string> = {
@@ -178,7 +187,7 @@ function Gradebook() {
     <div>
       <PageHeader
         title="Ведомость"
-        subtitle="Сводная таблица баллов группы по предмету"
+        subtitle="Оценки группы по предмету и средний балл каждого студента"
         actions={
           options.length > 0 && (
             <Select
@@ -227,11 +236,11 @@ function Gradebook() {
                         {a.title}
                       </Link>
                       <span className="text-[11px] font-normal text-muted">
-                        до {fmtDate(a.deadline)} · {a.maxScore} б.
+                        до {fmtDate(a.deadline)}
                       </span>
                     </th>
                   ))}
-                  <th className="min-w-[96px] px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-muted">Итого</th>
+                  <th className="min-w-[96px] px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-muted">Средний</th>
                 </tr>
               </thead>
               <tbody>
@@ -241,7 +250,7 @@ function Gradebook() {
                     {r.cells.map((c) => (
                       <td key={c.assignmentId} className={clsx('px-3 py-2.5 tabular', CELL[c.status])} title={STATUS[c.status]}>
                         {c.status === 'graded' ? (
-                          <b>{c.score}</b>
+                          <GradePill score={c.score} className="py-0.5" />
                         ) : c.status === 'submitted' ? (
                           'сдано'
                         ) : c.status === 'returned' ? (
@@ -253,10 +262,8 @@ function Gradebook() {
                         )}
                       </td>
                     ))}
-                    <td className="px-4 py-2.5 text-right tabular">
-                      <b>{r.total}</b>
-                      <span className="text-muted">/{data.totalMax}</span>
-                      <span className="ml-2 text-xs text-muted">{r.percent}%</span>
+                    <td className="px-4 py-2.5 text-right tabular" title={`Оценок: ${r.gradedCount}`}>
+                      <b className="font-display text-base">{formatGrade(r.average)}</b>
                     </td>
                   </tr>
                 ))}
@@ -264,7 +271,9 @@ function Gradebook() {
             </table>
           </div>
           <div className="flex flex-wrap gap-4 border-t border-line px-4 py-3 text-xs text-muted">
-            <span><b className="text-ink">8</b> — балл</span>
+            <span>
+              <b className="text-ink">2–5</b> — оценка
+            </span>
             <span className="text-info">сдано — ждёт проверки</span>
             <span className="text-warn">доработка — возвращено</span>
             <span className="text-danger">н/с — не сдано в срок</span>

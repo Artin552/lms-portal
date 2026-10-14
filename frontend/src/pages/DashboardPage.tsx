@@ -8,10 +8,12 @@ import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import type { Role, ScheduleEntry, StudentStatus } from '../api/types';
 import { useMe } from '../auth/AuthContext';
+import { GradePill } from '../components/GradePill';
 import { LessonCard } from '../components/LessonCard';
 import { countLabel, TodayStrip, type TodayFact } from '../components/TodayStrip';
 import { Badge, Card, CardHeader, EmptyState, Loading } from '../components/ui';
 import { fmtDeadline, hoursLeft, STATUS, STATUS_TONE } from '../utils/format';
+import { formatGrade } from '../utils/grades';
 import { currentAndNext } from '../utils/schedule';
 
 interface DashboardData {
@@ -19,7 +21,7 @@ interface DashboardData {
   lessons: ScheduleEntry[];
   unreadMessages: number;
   deadlines?: { id: number; title: string; subject: string; deadline: string; status: StudentStatus }[];
-  recentGrades?: { assignmentId: number; title: string; subject: string; score: number; maxScore: number; gradedAt: string }[];
+  recentGrades?: { assignmentId: number; title: string; subject: string; score: number; gradedAt: string }[];
   toCheckTotal?: number;
   toCheck?: { id: number; title: string; subject: string; count: number }[];
 }
@@ -58,7 +60,7 @@ function buildFacts(data: DashboardData, role: Role): TodayFact[] {
     facts.push({
       label: 'Последняя оценка',
       to: '/grades',
-      value: grade ? `${grade.score}/${grade.maxScore} — ${grade.title}` : 'пока нет',
+      value: grade ? `${formatGrade(grade.score)} — ${grade.title}` : 'пока нет',
     });
   } else {
     const total = data.toCheckTotal ?? 0;
@@ -190,7 +192,7 @@ export function DashboardPage() {
                           <span className="block truncate text-sm font-semibold">{g.title}</span>
                           <span className="block truncate text-xs text-muted">{g.subject}</span>
                         </span>
-                        <ScorePill score={g.score} max={g.maxScore} />
+                        <GradePill score={g.score} />
                       </Link>
                     </li>
                   ))}
@@ -227,18 +229,3 @@ export function DashboardPage() {
   );
 }
 
-export function ScorePill({ score, max }: { score: number | null; max: number }) {
-  if (score === null) return <span className="text-sm text-muted">—</span>;
-  const pct = score / max;
-  return (
-    <span
-      className={clsx(
-        'shrink-0 rounded-md px-2 py-1 font-display text-sm font-semibold tabular',
-        pct >= 0.85 ? 'bg-ok/15 text-ok' : pct >= 0.6 ? 'bg-info/10 text-info' : 'bg-warn/15 text-warn',
-      )}
-    >
-      {score}
-      <span className="text-xs font-normal opacity-70">/{max}</span>
-    </span>
-  );
-}

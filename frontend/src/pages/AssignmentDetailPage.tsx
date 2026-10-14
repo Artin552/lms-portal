@@ -7,9 +7,10 @@ import { api, errorMessage } from '../api/client';
 import type { Assignment, StudentStatus, Submission, SubmissionRow } from '../api/types';
 import { useMe } from '../auth/AuthContext';
 import { FileList, FilePicker } from '../components/files';
-import { Avatar, Badge, Button, Card, CardHeader, EmptyState, ErrorBox, Field, Input, Loading, Tabs, Textarea } from '../components/ui';
+import { Avatar, Badge, Button, Card, CardHeader, EmptyState, ErrorBox, Field, Loading, Tabs, Textarea } from '../components/ui';
 import { fmtDateTime, fmtDeadline, hoursLeft, STATUS, STATUS_TONE } from '../utils/format';
-import { ScorePill } from './DashboardPage';
+import { GradePill } from '../components/GradePill';
+import { formatGrade, GRADE_OPTIONS } from '../utils/grades';
 
 export function AssignmentDetailPage() {
   const { id } = useParams();
@@ -28,7 +29,7 @@ export function AssignmentDetailPage() {
         <ArrowLeft className="h-4 w-4" /> Все задания
       </Link>
       <AssignmentInfo a={data} canManage={me.role === 'ADMIN' || data.teacher.id === me.id} />
-      {me.role === 'STUDENT' ? <StudentPanel a={data} /> : <ReviewPanel assignmentId={data.id} maxScore={data.maxScore} />}
+      {me.role === 'STUDENT' ? <StudentPanel a={data} /> : <ReviewPanel assignmentId={data.id} />}
     </div>
   );
 }
@@ -83,7 +84,7 @@ function AssignmentInfo({ a, canManage }: { a: Assignment; canManage: boolean })
             <CalendarClock className="h-4 w-4" /> Дедлайн: {fmtDateTime(a.deadline)}
           </span>
           <span className="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface-2/60 px-2.5 py-1">
-            Максимум: <b className="tabular">{a.maxScore}</b> б.
+            Оценка: от 2 до 5
           </span>
         </div>
       </div>
@@ -143,7 +144,7 @@ function StudentPanel({ a }: { a: Assignment }) {
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-3">
                 <span className="font-semibold">{sub.status === 'GRADED' ? 'Работа проверена' : 'Нужно доработать'}</span>
-                {sub.status === 'GRADED' && <ScorePill score={sub.score} max={a.maxScore} />}
+                {sub.status === 'GRADED' && <GradePill score={sub.score} />}
               </div>
               {sub.teacherComment && <p className="mt-1.5 whitespace-pre-wrap text-sm">{sub.teacherComment}</p>}
               {sub.gradedAt && <p className="mt-1.5 text-xs text-muted">{fmtDateTime(sub.gradedAt)}</p>}
@@ -211,7 +212,7 @@ function StudentPanel({ a }: { a: Assignment }) {
 
 type ReviewFilter = 'all' | 'toCheck' | 'missing';
 
-function ReviewPanel({ assignmentId, maxScore }: { assignmentId: number; maxScore: number }) {
+function ReviewPanel({ assignmentId }: { assignmentId: number }) {
   const [filter, setFilter] = useState<ReviewFilter>('toCheck');
   const [openId, setOpenId] = useState<number | null>(null);
   const { data, isLoading } = useQuery({
@@ -271,12 +272,12 @@ function ReviewPanel({ assignmentId, maxScore }: { assignmentId: number; maxScor
                       {r.submission && r.submission.attempt > 1 && ` · попытка ${r.submission.attempt}`}
                     </span>
                   </span>
-                  {r.submission?.status === 'GRADED' && <ScorePill score={r.submission.score} max={maxScore} />}
+                  {r.submission?.status === 'GRADED' && <GradePill score={r.submission.score} />}
                   <Badge tone={STATUS_TONE[r.status]}>{STATUS[r.status]}</Badge>
                   {r.submission && <ChevronDown className={clsx('h-4 w-4 text-muted transition-transform', open && 'rotate-180')} />}
                 </button>
                 {open && r.submission && (
-                  <ReviewForm submission={r.submission} maxScore={maxScore} assignmentId={assignmentId} onDone={() => setOpenId(null)} />
+                  <ReviewForm submission={r.submission} assignmentId={assignmentId} onDone={() => setOpenId(null)} />
                 )}
               </li>
             );
@@ -287,19 +288,9 @@ function ReviewPanel({ assignmentId, maxScore }: { assignmentId: number; maxScor
   );
 }
 
-function ReviewForm({
-  submission,
-  maxScore,
-  assignmentId,
-  onDone,
-}: {
-  submission: Submission;
-  maxScore: number;
-  assignmentId: number;
-  onDone: () => void;
-}) {
+function ReviewForm({ submission, assignmentId, onDone }: { submission: Submission; assignmentId: number; onDone: () => void }) {
   const qc = useQueryClient();
-  const [score, setScore] = useState(submission.score?.toString() ?? '');
+  const [score, setScore] = useState<number | null>(submission.score);
   const [comment, setComment] = useState(submission.teacherComment ?? '');
 
   const onSuccess = () => {
@@ -310,7 +301,7 @@ function ReviewForm({
     onDone();
   };
   const grade = useMutation({
-    mutationFn: () => api.patch(`/submissions/${submission.id}/grade`, { score: Number(score), comment: comment || undefined }),
+    mutationFn: () => api.patch(`/submissions/${submission.id}/grade`, { score, comment: comment || undefined }),
     onSuccess,
   });
   const ret = useMutation({
@@ -318,8 +309,6 @@ function ReviewForm({
     onSuccess,
   });
   const err = grade.error ?? ret.error;
-  const scoreNum = Number(score);
-  const scoreValid = score !== '' && Number.isInteger(scoreNum) && scoreNum >= 0 && scoreNum <= maxScore;
 
   return (
     <div className="space-y-4 bg-surface-2/40 px-5 pb-5 pt-2">
@@ -329,18 +318,40 @@ function ReviewForm({
         <p className="text-sm text-muted">Без текста</p>
       )}
       <FileList files={submission.files} />
-      <div className="grid gap-3 sm:grid-cols-[140px_1fr]">
-        <Field label={`Балл (0–${maxScore})`}>
-          <Input type="number" min={0} max={maxScore} value={score} onChange={(e) => setScore(e.target.value)} className="tabular" />
-        </Field>
+      <div className="space-y-3">
+        <div>
+          <span className="label" id={`grade-${submission.id}`}>
+            Оценка
+          </span>
+          <div role="radiogroup" aria-labelledby={`grade-${submission.id}`} className="flex flex-wrap gap-1.5">
+            {GRADE_OPTIONS.map((g) => {
+              const active = score === g;
+              return (
+                <button
+                  key={g}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => setScore(g)}
+                  className={clsx(
+                    'h-10 min-w-[3rem] rounded-md border px-2 font-display text-sm font-semibold tabular transition-colors',
+                    active ? 'border-accent bg-accent text-on-accent' : 'border-line bg-surface hover:border-accent/60 hover:bg-surface-2',
+                  )}
+                >
+                  {formatGrade(g)}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <Field label="Комментарий">
           <Textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Что хорошо, что исправить" className="min-h-[42px]" />
         </Field>
       </div>
       {err && <ErrorBox message={errorMessage(err)} />}
       <div className="flex flex-wrap gap-2">
-        <Button onClick={() => grade.mutate()} disabled={!scoreValid} loading={grade.isPending} icon={<Check className="h-4 w-4" />}>
-          Выставить оценку
+        <Button onClick={() => grade.mutate()} disabled={score === null} loading={grade.isPending} icon={<Check className="h-4 w-4" />}>
+          {score === null ? 'Выберите оценку' : `Поставить ${formatGrade(score)}`}
         </Button>
         <Button
           variant="secondary"

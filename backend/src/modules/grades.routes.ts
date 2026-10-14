@@ -5,25 +5,24 @@ import { prisma } from '../prisma';
 import { studentStatus } from '../services/assignments';
 import { publicUser } from '../services/users';
 import { forbidden } from '../utils/errors';
+import { average } from '../utils/grades';
 
 export const gradesRouter = Router();
 gradesRouter.use(requireAuth);
 
-/** «Мои оценки»: проверенные работы студента и средний процент по предметам */
+/** «Мои оценки»: проверенные работы студента и средняя оценка по каждому предмету */
 gradesRouter.get('/my', requireRole('STUDENT'), async (req, res) => {
   const me = currentUser(req);
   const subs = await prisma.submission.findMany({
-    where: { studentId: me.id, status: 'GRADED' },
+    where: { studentId: me.id, status: 'GRADED', score: { not: null } },
     include: { assignment: { include: { subject: true } } },
     orderBy: { gradedAt: 'desc' },
   });
-  const bySubject = new Map<number, { subject: { id: number; name: string }; earned: number; max: number; count: number }>();
+  const bySubject = new Map<number, { subject: { id: number; name: string }; scores: number[] }>();
   for (const s of subs) {
     const subj = s.assignment.subject;
-    const acc = bySubject.get(subj.id) ?? { subject: { id: subj.id, name: subj.name }, earned: 0, max: 0, count: 0 };
-    acc.earned += s.score ?? 0;
-    acc.max += s.assignment.maxScore;
-    acc.count += 1;
+    const acc = bySubject.get(subj.id) ?? { subject: { id: subj.id, name: subj.name }, scores: [] };
+    acc.scores.push(s.score!);
     bySubject.set(subj.id, acc);
   }
   res.json({
@@ -33,14 +32,15 @@ gradesRouter.get('/my', requireRole('STUDENT'), async (req, res) => {
       title: s.assignment.title,
       subject: { id: s.assignment.subject.id, name: s.assignment.subject.name },
       score: s.score,
-      maxScore: s.assignment.maxScore,
       comment: s.teacherComment,
       gradedAt: s.gradedAt,
     })),
     subjects: [...bySubject.values()].map((v) => ({
-      ...v,
-      percent: v.max ? Math.round((v.earned / v.max) * 100) : 0,
+      subject: v.subject,
+      count: v.scores.length,
+      average: average(v.scores),
     })),
+    average: average(subs.map((s) => s.score!)),
   });
 });
 
@@ -49,7 +49,7 @@ const gradebookQuery = z.object({
   subjectId: z.coerce.number().int().positive(),
 });
 
-/** Сводная ведомость: студенты группы × задания по предмету */
+/** Сводная ведомость: студенты группы × задания по предмету, средняя оценка по строке */
 gradesRouter.get('/gradebook', requireRole('TEACHER', 'ADMIN'), async (req, res) => {
   const me = currentUser(req);
   const { groupId, subjectId } = gradebookQuery.parse(req.query);
@@ -69,14 +69,13 @@ gradesRouter.get('/gradebook', requireRole('TEACHER', 'ADMIN'), async (req, res)
       orderBy: { deadline: 'asc' },
     }),
   ]);
-  const totalMax = assignments.reduce((s, a) => s + a.maxScore, 0);
   res.json({
-    assignments: assignments.map((a) => ({ id: a.id, title: a.title, deadline: a.deadline, maxScore: a.maxScore })),
+    assignments: assignments.map((a) => ({ id: a.id, title: a.title, deadline: a.deadline })),
     rows: students.map((st) => {
-      let earned = 0;
+      const graded: number[] = [];
       const cells = assignments.map((a) => {
         const sub = a.submissions.find((s) => s.studentId === st.id) ?? null;
-        if (sub?.status === 'GRADED') earned += sub.score ?? 0;
+        if (sub?.status === 'GRADED' && sub.score !== null) graded.push(sub.score);
         return {
           assignmentId: a.id,
           submissionId: sub?.id ?? null,
@@ -84,13 +83,7 @@ gradesRouter.get('/gradebook', requireRole('TEACHER', 'ADMIN'), async (req, res)
           score: sub?.score ?? null,
         };
       });
-      return {
-        student: publicUser(st),
-        cells,
-        total: earned,
-        percent: totalMax ? Math.round((earned / totalMax) * 100) : 0,
-      };
+      return { student: publicUser(st), cells, average: average(graded), gradedCount: graded.length };
     }),
-    totalMax,
   });
 });
