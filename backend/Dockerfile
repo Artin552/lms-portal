@@ -17,6 +17,8 @@ COPY package.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/dist ./dist
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
 EXPOSE 4000
-# Миграции → seed (пропускается, если данные уже есть) → API
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/prisma/seed.js && node dist/src/index.js"]
+# Миграции → seed (пропускается, если данные уже есть) → API, см. entrypoint.sh
+CMD ["./entrypoint.sh"]

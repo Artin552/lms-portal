@@ -4,4 +4,3 @@ uploads
 uploads-test
 .env
 .env.*
-!.env.example
