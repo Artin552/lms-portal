@@ -1,32 +1,55 @@
+import { useQuery } from '@tanstack/react-query';
+import { SmartCaptcha } from '@yandex/smart-captcha';
 import { Eye, EyeOff, LogIn } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { errorMessage } from '../api/client';
+import { api, errorMessage } from '../api/client';
+import type { CaptchaConfig } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { Button, ErrorBox, Field, Input } from '../components/ui';
 import { APP_NAME } from '../config';
 import { PyramidOutline } from '../components/BrandMark';
 import { Logo } from '../layout/AppLayout';
+import { useTheme } from '../theme/ThemeContext';
 
 export function LoginPage() {
   const { login } = useAuth();
+  const { theme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const [form, setForm] = useState({ login: '', password: '' });
   const [show, setShow] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState('');
+
+  const [captchaKey, setCaptchaKey] = useState(0);
+
+  const { data: captcha } = useQuery({
+    queryKey: ['captcha'],
+    queryFn: async () => (await api.get<CaptchaConfig>('/auth/captcha')).data,
+    staleTime: Infinity,
+  });
+  const captchaRequired = Boolean(captcha?.enabled);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (captchaRequired && !captchaToken) {
+      setError('Подтвердите, что вы не робот');
+      return;
+    }
     setError('');
     setLoading(true);
     try {
-      await login(form.login, form.password);
+      await login(form.login, form.password, captchaToken || undefined);
       const from = (location.state as { from?: string } | null)?.from;
       navigate(from && from !== '/login' ? from : '/', { replace: true });
     } catch (err) {
       setError(errorMessage(err));
+      if (captchaRequired) {
+        setCaptchaToken('');
+        setCaptchaKey((k) => k + 1);
+      }
     } finally {
       setLoading(false);
     }
@@ -96,8 +119,29 @@ export function LoginPage() {
                 </button>
               </div>
             </Field>
+            {captchaRequired && captcha && (
+              <div className="flex min-h-[100px] justify-center">
+                <SmartCaptcha
+                  key={captchaKey}
+                  sitekey={captcha.sitekey}
+                  language="ru"
+                  theme={theme}
+                  onSuccess={setCaptchaToken}
+                  onTokenExpired={() => setCaptchaToken('')}
+                  onNetworkError={() =>
+                    setError('Не удалось загрузить капчу. Проверьте соединение и обновите страницу.')
+                  }
+                />
+              </div>
+            )}
             {error && <ErrorBox message={error} />}
-            <Button type="submit" className="w-full" loading={loading} icon={<LogIn className="h-4 w-4" />}>
+            <Button
+              type="submit"
+              className="w-full"
+              loading={loading}
+              disabled={captchaRequired && !captchaToken}
+              icon={<LogIn className="h-4 w-4" />}
+            >
               Войти
             </Button>
           </form>

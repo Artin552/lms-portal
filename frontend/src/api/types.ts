@@ -10,6 +10,11 @@ export interface Ref {
   name: string;
 }
 
+export interface CaptchaConfig {
+  enabled: boolean;
+  sitekey: string;
+}
+
 export interface PublicUser {
   id: number;
   role: Role;
