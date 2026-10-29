@@ -6,7 +6,7 @@ import type { Role, SelfUser } from '../api/types';
 interface AuthState {
   user: SelfUser | null;
   ready: boolean;
-  login: (login: string, password: string) => Promise<void>;
+  login: (login: string, password: string, captchaToken?: string) => Promise<void>;
   logout: () => Promise<void>;
   setUser: (u: SelfUser) => void;
   hasRole: (...roles: Role[]) => boolean;
@@ -35,8 +35,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, [qc]);
 
-  const login = useCallback(async (loginName: string, password: string) => {
-    const res = await api.post<{ accessToken: string; user: SelfUser }>('/auth/login', { login: loginName, password });
+  const login = useCallback(async (loginName: string, password: string, captchaToken?: string) => {
+    const res = await api.post<{ accessToken: string; user: SelfUser }>('/auth/login', {
+      login: loginName,
+      password,
+      captchaToken,
+    });
     setAccessToken(res.data.accessToken);
     setUser(res.data.user);
   }, []);

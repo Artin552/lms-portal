@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { config } from '../config';
 import { currentUser, requireAuth, signAccessToken } from '../middleware/auth';
 import { prisma } from '../prisma';
+import { verifyCaptcha } from '../services/captcha';
 import { selfUser } from '../services/users';
 import { badRequest, unauthorized } from '../utils/errors';
 
@@ -44,10 +45,22 @@ async function issueTokens(res: Response, user: { id: number; role: 'STUDENT' | 
 const loginSchema = z.object({
   login: z.string().trim().min(1, 'Введите логин или email'),
   password: z.string().min(1, 'Введите пароль'),
+  captchaToken: z.string().optional(),
+});
+
+authRouter.get('/captcha', (_req, res) => {
+  res.json({ enabled: config.captcha.enabled, sitekey: config.captcha.enabled ? config.captcha.sitekey : '' });
 });
 
 authRouter.post('/login', loginLimiter, async (req, res) => {
-  const { login, password } = loginSchema.parse(req.body);
+  const { login, password, captchaToken } = loginSchema.parse(req.body);
+  if (config.captcha.enabled) {
+    if (!captchaToken) throw badRequest('Подтвердите, что вы не робот', { captcha: true });
+    const verdict = await verifyCaptcha(captchaToken, req.ip);
+    if (verdict === 'failed') throw badRequest('Проверка «я не робот» не пройдена, попробуйте еще раз', { captcha: true });
+    // Недоступность сервиса Яндекса не должна запирать портал – пускаем и пишем в лог
+    if (verdict === 'unavailable') console.warn('SmartCaptcha недоступна – вход выполнен без проверки капчи');
+  }
   const user = await prisma.user.findFirst({
     where: { OR: [{ login }, { email: { equals: login, mode: 'insensitive' } }] },
     include: { group: true },

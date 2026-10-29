@@ -88,6 +88,15 @@
   }
 }
 
+/* Фикс капчи */
+.smart-captcha iframe {
+  color-scheme: normal;
+}
+
+.smart-captcha {
+  flex: 1 1 0%;
+}
+
 /* Тонкие скроллбары */
 * {
   scrollbar-width: thin;

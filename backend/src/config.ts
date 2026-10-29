@@ -8,6 +8,17 @@ function required(name: string, fallbackForDev?: string): string {
   throw new Error(`Не задана переменная окружения ${name}`);
 }
 
+// SmartCaptcha включается, только когда заданы оба ключа: клиентский уходит на фронтенд,
+// серверный нужен для проверки токена. Один ключ без второго – ошибка конфигурации.
+const captchaSitekey = process.env.SMARTCAPTCHA_SITEKEY ?? '';
+const captchaServerKey = process.env.SMARTCAPTCHA_SERVER_KEY ?? '';
+const captchaEnabled = Boolean(captchaSitekey && captchaServerKey);
+if (!captchaEnabled && (captchaSitekey || captchaServerKey)) {
+  const message = 'SmartCaptcha: задан только один из ключей SMARTCAPTCHA_SITEKEY / SMARTCAPTCHA_SERVER_KEY';
+  if (process.env.NODE_ENV === 'production') throw new Error(message);
+  console.warn(`${message} – капча отключена`);
+}
+
 export const config = {
   env: process.env.NODE_ENV ?? 'development',
   port: Number(process.env.PORT ?? 4000),
@@ -27,4 +38,10 @@ export const config = {
   /** Дата начала семестра (понедельник первой, нечётной, недели) */
   semesterStart: process.env.SEMESTER_START ?? '2026-09-01',
   cookieSecure: process.env.COOKIE_SECURE === 'true',
+  /** Yandex SmartCaptcha: необязательная защита формы входа */
+  captcha: {
+    enabled: captchaEnabled,
+    sitekey: captchaSitekey,
+    serverKey: captchaServerKey,
+  },
 };

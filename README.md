@@ -2,7 +2,7 @@
 
 Портал для вуза: расписание с чётными и нечётными неделями, домашние задания со сдачей и проверкой, оценки, чаты в реальном времени и уведомления. Роли: студент, преподаватель, администратор.
 
-Название (по умолчанию «ННГАСУ») задаётся одной переменной — `APP_NAME` для Docker или `VITE_APP_NAME` для локального запуска.
+Название (по умолчанию «ННГАСУ») задаётся переменной `APP_NAME` для Docker (compose передаёт её во фронтенд как `VITE_APP_NAME`) или `VITE_APP_NAME` при локальном запуске без Docker.
 
 ## Быстрый старт через Docker
 
@@ -24,12 +24,14 @@ docker compose up --build
 
 ## Локальный запуск без Docker
 
-Нужны Node.js 20+ и PostgreSQL 14+. Postgres удобно поднять из того же compose-файла: `docker compose up -d db`. Он заодно создаёт базу `lms_test` для тестов.
+Нужны Node.js 20+ и PostgreSQL 14+. Postgres удобно поднять из того же compose-файла: `docker compose up -d postgres`. Он заодно создаёт базу `lms_test` для тестов.
+
+Все переменные окружения и их назначение собраны в корневом `.env.example` (секция «Только для локальной разработки без Docker»). Скопируйте нужные из неё в пакетные `.env`:
 
 ```bash
 # Бэкенд — http://localhost:4000
 cd backend
-cp .env.example .env
+cp .env.example .env      # в шаблоне только DATABASE_URL и TEST_DATABASE_URL
 npm install
 npx prisma migrate deploy
 npm run seed            # повторный запуск с очисткой базы: npm run seed -- --force
@@ -37,7 +39,7 @@ npm run dev
 
 # Фронтенд — http://localhost:5173 (в другом терминале)
 cd frontend
-cp .env.example .env
+cp .env.example .env      # в шаблоне VITE_APP_NAME и VITE_API_PROXY
 npm install
 npm run dev
 ```
@@ -57,31 +59,43 @@ npm test
 
 ## Переменные окружения
 
-**backend/.env**
+Единственный источник правды – корневой `.env.example` (рядом с `docker-compose.yml`, для Docker это `.env`). Переменные из последней секции нужны только при локальном запуске без Docker и копируются в `backend/.env` и `frontend/.env` (их собственные `.env.example` – короткие указатели на корневой).
 
-| Переменная | Назначение | По умолчанию |
-|---|---|---|
-| `DATABASE_URL` | Подключение к PostgreSQL | — |
-| `TEST_DATABASE_URL` | База для `npm test` | `postgresql://lms:lms@localhost:5432/lms_test` |
-| `PORT` | Порт API | `4000` |
-| `CORS_ORIGIN` | Адрес фронтенда (можно несколько через запятую) | `http://localhost:5173` |
-| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | Подпись токенов. В продакшене обязательны | dev-значения |
-| `JWT_ACCESS_TTL` | Время жизни access-токена | `15m` |
-| `JWT_REFRESH_TTL_DAYS` | Время жизни refresh-токена, дней | `30` |
-| `FILE_URL_SECRET` | Подпись временных ссылок на файлы. В продакшене обязателен | dev-значение |
-| `FILE_URL_TTL_SEC` | Сколько живёт ссылка на файл, секунд | `3600` |
-| `COOKIE_SECURE` | Отдавать refresh-cookie только по HTTPS | `false` |
-| `UPLOAD_DIR` | Папка для загруженных файлов | `uploads` |
-| `MAX_UPLOAD_MB` | Максимальный размер одного файла | `20` |
-| `SEMESTER_START` | Дата начала семестра: от неё считается номер и чётность недели (1-я неделя — нечётная) | `2026-09-01` |
+Колонка «Где»: `compose` – читается `docker-compose.yml` и уходит в контейнер, `backend` – `backend/src/config.ts`, `frontend` – сборка и dev-сервер Vite, `dev` – только локальный запуск и тесты.
 
-**frontend/.env**: `VITE_APP_NAME` — название портала, `VITE_API_PROXY` — адрес бэкенда для dev-прокси.
+| Переменная | Где | Назначение | По умолчанию |
+|---|---|---|---|
+| `APP_NAME` | compose | Название портала, уходит build-аргументом `VITE_APP_NAME`. После смены нужна пересборка | `ННГАСУ` |
+| `PUBLIC_URL` | compose | Внешний адрес портала, он же `CORS_ORIGIN` | `http://localhost:8080` |
+| `FRONTEND_PORT` | compose | Порт, на котором фронтенд публикуется наружу | `8080` |
+| `NGINX_CLIENT_MAX_BODY_MB` | compose | Лимит тела запроса nginx, МБ. Должен покрывать несколько файлов: бэкенд принимает до 10 файлов по `MAX_UPLOAD_MB` | `100` |
+| `BACKEND_PORT` | compose | Порт API внутри контейнера | `4000` |
+| `TZ` | compose | Часовой пояс контейнеров | `Europe/Moscow` |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | compose | Реквизиты Postgres; из них собирается `DATABASE_URL` | `lms` |
+| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | backend | Подпись токенов. В продакшене обязательны | dev-значения |
+| `JWT_ACCESS_TTL` | backend | Время жизни access-токена | `15m` |
+| `JWT_REFRESH_TTL_DAYS` | backend | Время жизни refresh-токена, дней | `30` |
+| `REFRESH_REUSE_GRACE_MS` | backend | Окно, в котором повтор старого refresh-токена не считается атакой, мс | `10000` |
+| `SMARTCAPTCHA_SITEKEY`, `SMARTCAPTCHA_SERVER_KEY` | backend | Ключи Yandex SmartCaptcha для капчи на форме входа. Капча работает, только когда заданы оба | пусто – капча выключена |
+| `FILE_URL_SECRET` | backend | Подпись временных ссылок на файлы. В продакшене обязателен | dev-значение |
+| `FILE_URL_TTL_SEC` | backend | Сколько живет ссылка на файл, секунд | `3600` |
+| `COOKIE_SECURE` | backend | Отдавать refresh-cookie только по HTTPS | `false` |
+| `UPLOAD_DIR` | backend | Папка для загруженных файлов (в контейнере – target тома `uploads`) | `uploads`, в Docker `/app/uploads` |
+| `MAX_UPLOAD_MB` | backend | Максимальный размер одного файла | `20` |
+| `SEMESTER_START` | backend | Дата начала семестра: от нее считается номер и четность недели (1-я неделя – нечетная) | `2026-09-01` |
+| `PORT` | backend | Порт API при локальном запуске | `4000` |
+| `CORS_ORIGIN` | backend | Адрес фронтенда (можно несколько через запятую) при локальном запуске | `http://localhost:5173` |
+| `DATABASE_URL` | dev | Подключение к PostgreSQL для миграций и локального запуска | – |
+| `TEST_DATABASE_URL` | dev | База для `npm test` | `postgresql://lms:lms@localhost:5432/lms_test` |
+| `SEED_FORCE` | dev | `true` – `npm run seed` перезапишет данные | `false` |
+| `VITE_APP_NAME` | frontend | Название портала при локальном запуске | `ННГАСУ` |
+| `VITE_API_PROXY` | frontend | Адрес бэкенда для dev-прокси Vite | `http://localhost:4000` |
 
 ## Структура
 
 ```
-├── docker-compose.yml        db + backend + frontend (nginx)
-├── docker/postgres-init.sql  создаёт базу lms_test
+├── docker-compose.yml        postgres + backend + frontend (nginx)
+├── docker/postgres-init.sh   создаёт базу lms_test
 ├── backend/
 │   ├── prisma/
 │   │   ├── schema.prisma     схема БД
@@ -121,3 +135,5 @@ npm test
 **Чаты.** Общий чат группы и чаты по предметам создаются автоматически и сами синхронизируют состав участников при изменении группы или назначений. Личные диалоги создаются по требованию. Сообщения отправляются через REST (так проще передавать файлы), а рассылаются через Socket.IO. «Прочитано» считается по времени последнего прочтения у каждого участника. Преподаватель в групповых чатах может закреплять и удалять сообщения. Уведомление в колокольчик приходит только о личных сообщениях: по групповым чатам хватает счётчика непрочитанных.
 
 **Файлы.** Разрешены только расширения из белого списка. Файлы скачиваются по временным подписанным ссылкам (аналог presigned URL в S3), которые выдаются только тем, у кого есть доступ к заданию, сдаче или чату. Всё, кроме картинок, отдаётся на скачивание как `application/octet-stream`. Чтобы перейти на S3, достаточно реализовать интерфейс `FileStorage` в `backend/src/storage/storage.ts`.
+
+**Капча.** Yandex SmartCaptcha на форме входа включается необязательно: достаточно задать `SMARTCAPTCHA_SITEKEY` и `SMARTCAPTCHA_SERVER_KEY` из консоли Yandex Cloud и перезапустить backend — фронтенд получает сайткей через `GET /api/auth/captcha`, пересборка не нужна. Серверный ключ наружу не отдаётся, проверка токена идёт через `https://smartcaptcha.cloud.yandex.ru/validate`. Токен одноразовый, поэтому после неудачной попытки виджет сбрасывается. Если сервис Яндекса недоступен, вход не блокируется: в лог пишется предупреждение, а пользователь проходит без капчи.

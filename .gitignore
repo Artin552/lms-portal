@@ -1,8 +1,12 @@
+# Мусор
 node_modules/
 dist/
 uploads/
 uploads-test/
-.env
 *.log
 .DS_Store
 *.tsbuildinfo
+
+# Секреты
+docker-compose.override.yml
+.env

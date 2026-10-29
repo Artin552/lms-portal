@@ -1,4 +1,5 @@
 import request from 'supertest';
+import { config } from '../src/config';
 import { prisma } from '../src/prisma';
 import { app, auth, createFixture, login, PASSWORD, resetDb } from './helpers';
 
@@ -72,7 +73,8 @@ describe('Авторизация', () => {
     expect(afterReuse.status).toBe(401);
   });
 
-  it('logout отзывает refresh-токен', async () => {
+  it('logout отзывает refresh-export interface CaptchaConfig {
+токен', async () => {
     const loginRes = await request(app).post('/api/auth/login').send({ login: 'studentA', password: PASSWORD });
     const cookie = refreshCookie(loginRes);
     expect((await request(app).post('/api/auth/logout').set('Cookie', cookie)).status).toBe(204);
@@ -109,5 +111,79 @@ describe('Авторизация', () => {
     const res = await request(app).get('/api/admin/users').set(auth(admin));
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(5);
+  });
+});
+
+function stubCaptchaResponse(status: 'ok' | 'failed' | 'network-error') {
+  const fetchMock = vi.fn();
+  if (status === 'network-error') fetchMock.mockRejectedValue(new Error('network down'));
+  else fetchMock.mockResolvedValue({ ok: true, json: async () => ({ status }) });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+describe('SmartCaptcha', () => {
+  beforeEach(async () => {
+    await resetDb();
+    await createFixture();
+    config.captcha.enabled = true;
+    config.captcha.sitekey = 'test-sitekey';
+    config.captcha.serverKey = 'test-server-key';
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    config.captcha.enabled = false;
+    config.captcha.sitekey = '';
+    config.captcha.serverKey = '';
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('отдает настройки капчи странице входа', async () => {
+    expect((await request(app).get('/api/auth/captcha')).body).toEqual({ enabled: true, sitekey: 'test-sitekey' });
+    config.captcha.enabled = false;
+    expect((await request(app).get('/api/auth/captcha')).body).toEqual({ enabled: false, sitekey: '' });
+  });
+
+  it('не пускает без токена капчи и не дергает сервис Яндекса', async () => {
+    const fetchMock = stubCaptchaResponse('ok');
+    const res = await request(app).post('/api/auth/login').send({ login: 'studentA', password: PASSWORD });
+    expect(res.status).toBe(400);
+    expect(res.body.details).toEqual({ captcha: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('отклоняет вход, если Яндекс не подтвердил токен', async () => {
+    stubCaptchaResponse('failed');
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ login: 'studentA', password: PASSWORD, captchaToken: 'bad' });
+    expect(res.status).toBe(400);
+    expect(res.body.details).toEqual({ captcha: true });
+  });
+
+  it('пускает с валидным токеном и передает IP пользователя', async () => {
+    const fetchMock = stubCaptchaResponse('ok');
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ login: 'studentA', password: PASSWORD, captchaToken: 'good' });
+    expect(res.status).toBe(200);
+    expect(res.body.accessToken).toEqual(expect.any(String));
+
+    const [url, init] = fetchMock.mock.calls[0];
+    const body = init.body as URLSearchParams;
+    expect(url).toBe('https://smartcaptcha.cloud.yandex.ru/validate');
+    expect(body.get('token')).toBe('good');
+    expect(body.get('secret')).toBe('test-server-key');
+    expect(body.get('ip')).toBeTruthy();
+  });
+
+  it('пускает при недоступности сервиса Яндекса', async () => {
+    stubCaptchaResponse('network-error');
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ login: 'studentA', password: PASSWORD, captchaToken: 'good' });
+    expect(res.status).toBe(200);
   });
 });
